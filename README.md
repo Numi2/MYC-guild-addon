@@ -5,8 +5,8 @@ A minimal guild addon for **WoW: Forever**, interface **16001**. Type **/myc** f
 **[Download MYCRadar.zip](MYCRadar.zip?raw=true)** · **[Full instructions](MYCRadar/README.md)**
 
 - **PvP rankings:** lifetime honorable kills, undead paladin honorable kills recorded by MYC, and bounty points.
-- **Guild bounty board:** members add full Horde character names. A minimap badge flags a listed player detected on a visible target, mouseover or nameplate. Named honorable-kill credit awards **10 points per victim per UTC day**.
-- **Shared quests:** find guildmates on the same unfinished quest in your zone; click to whisper.
+- **Guild bounty board:** full Horde names, local minimap sightings and guild reports that expire after 90 seconds. Hover for the witness and approximate observer area. Named honorable-kill credit awards **10 points per victim per UTC day**.
+- **Shared quests and Legacy companions:** find guildmates on the same unfinished quest in your zone, or the same unfinished objective in a tracked Legacy challenge; click to whisper.
 - **Guild crafters:** searchable learned recipes, item tooltips and click-to-whisper.
 
 Guild-only synchronization. No dependencies, web services, scheduling, signup management or auction-price functionality.
@@ -30,4 +30,4 @@ All addon source is tracked in **MYCRadar/**. The ZIP is built directly from the
 Run **lua tests/run.lua** for deterministic multi-client tests.
 Run **python3 scripts/package.py** to rebuild the ZIP, and append **--check** to verify it matches the source. CI validates Lua 5.1 and 5.4 syntax, runs the tests on both versions, and checks the archive.
 
-**Live Forever gameplay remains unverified:** desktop capture could not read the running game screen. Automated checks cover detection, scoring, duplicate/reordered messages, guild changes, crafting and window controls; they do not establish live-client behavior.
+Automated checks cover detection, scoring, duplicate/reordered messages, guild changes, crafting, Legacy companions, report expiry and window controls. Use two guild clients to verify live synchronization after an update.

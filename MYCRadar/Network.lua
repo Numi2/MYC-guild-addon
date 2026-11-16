@@ -8,16 +8,16 @@ function N:Clear()
     self.lastSend, self.lastReply = -9999, -9999
 end
 
-function N:Queue(message, key, priority)
+function N:Queue(message, key, priority, ttl)
     if not R:InGuild() or type(message) ~= "string" or #message > 255 then return false end
     key = key or message
     if self.lookup[key] then
         local row = self.lookup[key]
-        row.text, row.at, row.tries = message, R:Clock(), 0
+        row.text, row.at, row.tries, row.ttl = message, R:Clock(), 0, ttl
         return true
     end
     if #self.queue >= 90 then return false end
-    local row = { text = message, key = key, at = R:Clock(), tries = 0 }
+    local row = { text = message, key = key, at = R:Clock(), tries = 0, ttl = ttl }
     if priority then table.insert(self.queue, 1, row) else self.queue[#self.queue + 1] = row end
     self.lookup[key] = row
     return true
@@ -59,7 +59,7 @@ function N:SendNext()
     local now = R:Clock()
     if now - self.lastSend < 1.5 then return end
     local row = self.queue[1]
-    local expired = now - row.at > 600
+    local expired = now - row.at >= (row.ttl or 600)
     if not expired then
         if not C_ChatInfo or not C_ChatInfo.SendAddonMessage then return end
         self.lastSend = now
@@ -85,11 +85,12 @@ end
 
 function N:Snapshot(peer, message)
     local kind, revision, index, total, header, payload =
-        message:match("^S|([QRB])|(%d+)|(%d+)|(%d+)|([^|]*)|([^|]*)$")
+        message:match("^S|([QRBL])|(%d+)|(%d+)|(%d+)|([^|]*)|([^|]*)$")
     revision, index, total = tonumber(revision), tonumber(index), tonumber(total)
     if not R:SafeNumber(revision, 1, 9007199254740991) or not index or not total or
         index < 1 or total < 1 or total > MAX_PAGES or index > total or #payload > 170 then return end
     if kind == "B" and total > 5 then return end
+    if kind == "L" and total > 32 then return end
     if kind == "Q" and not header:match("^%d+:%d+:%d+$") then return end
     if kind ~= "Q" and header ~= "" then return end
     peer.revisions = peer.revisions or {}
@@ -139,6 +140,8 @@ function N:Snapshot(peer, message)
         valid = true
     elseif kind == "B" then
         valid = R.Bounties:Receive(peer.name, revision, all)
+    elseif kind == "L" then
+        valid = R.Legacy:Receive(peer, all)
     end
     if valid then
         peer.revisions[kind] = revision
@@ -151,7 +154,8 @@ function N:Receive(message, channel, sender)
         type(message) ~= "string" or #message > 255 then return end
     local key = R:NameKey(sender)
     if not key or key == R:NameKey(R:UnitName("player")) or not R:IsMember(key) then return end
-    if message ~= "H" and message:sub(1, 2) ~= "S|" and message:sub(1, 2) ~= "V|" then return end
+    if message ~= "H" and message:sub(1, 2) ~= "S|" and message:sub(1, 2) ~= "V|" and
+        message:sub(1, 2) ~= "T|" then return end
     local peer = R.peers[key] or { recipes = {}, name = R:CleanName(sender), received = 0, window = R:Clock() }
     R.peers[key] = peer
     if R:Clock() - peer.window >= 60 then peer.window, peer.received = R:Clock(), 0 end
@@ -167,6 +171,8 @@ function N:Receive(message, channel, sender)
         end
     elseif message:sub(1, 2) == "V|" then
         R.PvP:Receive(peer.name, message)
+    elseif message:sub(1, 2) == "T|" then
+        R.Bounties:ReceiveSighting(peer, message)
     else
         self:Snapshot(peer, message)
     end
