@@ -1,5 +1,5 @@
 local _, R = ...
-R.Window = { tab = "pvp", metric = "lifetime", page = 1, rows = {} }
+R.Window = { tab = "pvp", metric = "lifetime", questView = "quests", page = 1, rows = {} }
 local W = R.Window
 local PAGE_SIZE = 6
 local accent = { 0.22, 0.84, 0.75 }
@@ -102,6 +102,18 @@ function W:Create()
     end
     self.hint = label(f, "GameFontHighlightSmall", 14, -85)
     self.hint:SetWidth(362)
+    self.questViews = {}
+    for i, view in ipairs({ { "quests", "Shared quests" }, { "legacy", "Legacy goals" } }) do
+        local key = view[1]
+        self.questViews[key] = button(f, view[2], 114, 14 + (i - 1) * 124, -83, function()
+            W.questView, W.page = key, 1
+            W.search:SetText("")
+            W:Refresh()
+        end)
+    end
+    self.legacyCount = label(f, "GameFontDisableSmall", 262, -89)
+    self.legacyCount:SetWidth(114)
+    self.legacyCount:SetWordWrap(false)
     self.heading = label(f, "GameFontDisableSmall", 19, -114)
     self.heading:SetWidth(211)
     self.rightHeading = label(f, "GameFontDisableSmall", 239, -114)
@@ -202,15 +214,27 @@ function W:Data()
         end
     elseif self.tab == "bounties" then
         for _, row in ipairs(R.Bounties:List()) do
+            local sighting = row.sighting
+            local seconds = sighting and math.max(0, math.floor(R:ServerNow() - sighting.observed)) or 0
+            local area = sighting and R.Bounties:SightingArea(sighting)
+            local witness = sighting and (sighting.witnessKey == R:NameKey(R:UnitName("player")) and "You" or sighting.witness)
             rows[#rows + 1] = {
                 name = row.name, left = row.name,
                 right = row.nearby and "|cffff8a45Nearby|r" or
-                    (row.claimed and "|cff888888Claimed today|r" or (row.own and "10 pts / yours" or "10 pts")),
+                    (sighting and (seconds .. "s · " .. area) or
+                    (row.claimed and "|cff888888Claimed today|r" or (row.own and "10 pts / yours" or "10 pts"))),
                 detail = "Listed by " .. table.concat(row.authors, ", ") ..
                     ". 10 points for named honorable kill credit, once per victim per UTC day." ..
-                    (row.claimed and " You already earned this reward today." or "") .. " Click to select the name.",
+                    (row.claimed and " You already earned this reward today." or "") ..
+                    (sighting and ("\nLast sighting: " .. seconds .. " seconds ago. Witness: " .. witness ..
+                        ". Observer area: " .. area .. (sighting.x ~= 99 and sighting.y ~= 99 and
+                        (" (map grid " .. (sighting.x + 1) .. ", " .. (sighting.y + 1) .. " of 10 × 10)") or "") ..
+                        ". The target may have moved or be on another layer.") or "") ..
+                    " Click to select the name.",
             }
         end
+    elseif self.tab == "quests" and self.questView == "legacy" then
+        rows = R.Legacy:Matches()
     elseif self.tab == "quests" then
         local q = R.Quests
         for key, peer in pairs(R.peers) do
@@ -251,7 +275,7 @@ function W:Data()
             end
         end
     end
-    if self.tab ~= "pvp" then
+    if self.tab ~= "pvp" and self.tab ~= "bounties" then
         table.sort(rows, function(a, b)
             if a.left == b.left then return a.right < b.right end
             return a.left < b.left
@@ -261,7 +285,8 @@ function W:Data()
     if search ~= "" then
         local filtered = {}
         for _, row in ipairs(rows) do
-            if (row.left .. " " .. row.right .. " " .. (row.itemID or "")):lower():find(search, 1, true) then
+            if (row.left .. " " .. row.right .. " " .. (row.tooltipTitle or "") .. " " ..
+                (row.itemID or "")):lower():find(search, 1, true) then
                 filtered[#filtered + 1] = row
             end
         end
@@ -280,7 +305,13 @@ function W:Refresh()
         metric:SetShown(self.tab == "pvp")
         metric:SetSelected(key == self.metric)
     end
-    self.hint:SetShown(self.tab ~= "pvp")
+    for key, view in pairs(self.questViews) do
+        view:SetShown(self.tab == "quests")
+        view:SetSelected(self.questView == key)
+    end
+    self.legacyCount:SetShown(self.tab == "quests" and self.questView == "legacy")
+    self.legacyCount:SetText((R.Legacy.tracked or 0) .. " tracked")
+    self.hint:SetShown(self.tab ~= "pvp" and self.tab ~= "quests")
     local own, count = R.Bounties:Own() or {}, 0
     for _ in pairs(own) do count = count + 1 end
     self.hint:SetText(self.tab == "bounties" and ("Your names: " .. count .. "/5. Include the surname.") or
@@ -296,7 +327,8 @@ function W:Refresh()
     self.heading:SetText(self.tab == "pvp" and "GUILD MEMBER" or
         (self.tab == "bounties" and "HORDE CHARACTER" or (self.tab == "crafters" and "ITEM" or "QUEST")))
     self.rightHeading:SetText(self.tab == "pvp" and (self.metric == "points" and "POINTS" or "HONORABLE KILLS") or
-        (self.tab == "bounties" and "REWARD" or (self.tab == "crafters" and "CRAFTERS" or "GUILDMATE")))
+        (self.tab == "bounties" and "SIGHTING / REWARD" or (self.tab == "crafters" and "CRAFTERS" or "GUILDMATE")))
+    if self.tab == "quests" and self.questView == "legacy" then self.heading:SetText("LEGACY OBJECTIVE") end
     local data = self:Data()
     local pages = math.max(1, math.ceil(#data / PAGE_SIZE))
     self.page = math.max(1, math.min(self.page, pages))
@@ -315,7 +347,11 @@ function W:Refresh()
     self.empty:SetText(self.search:GetText():match("%S") and "No matches. Try another name or item." or
         (self.tab == "pvp" and "No shared PvP totals yet." or
         (self.tab == "bounties" and "No bounties. Add a full Horde name below." or
-        (self.tab == "crafters" and "No recipes shared yet. Open your profession books." or "No shared quests in your zone yet.")))
+        (self.tab == "crafters" and "No recipes shared yet. Open your profession books." or
+        (self.questView == "legacy" and
+            (not R.Legacy:Available() and "Legacy tracking is unavailable on this client." or
+            (not next(R.Legacy.own) and "Track a Legacy challenge in WoW to share your goals." or
+            "No guildmates share your unfinished Legacy objectives yet.")) or "No shared quests in your zone yet."))))
     )
     self.footer:ClearAllPoints()
     self.footer:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 14, self.tab == "bounties" and -347 or -313)
@@ -324,8 +360,10 @@ function W:Refresh()
         self.footer:SetText(self.metric == "lifetime" and "WoW lifetime totals. Hover for the last shared update." or
             (named and "Recorded by MYC. Shared honorable kills count." or "Named kill credit is unavailable on this client."))
     elseif self.tab == "bounties" then
-        self.footer:SetText(named and "Visible sightings on the minimap. 10 pts per victim per UTC day." or
+        self.footer:SetText(named and "Sightings expire after 90s. Hover for witness and reward." or
             "Nearby alerts work; named kill credit is unavailable on this client.")
+    elseif self.tab == "quests" and self.questView == "legacy" then
+        self.footer:SetText("Track challenges in WoW's Legacy window. Click to whisper.")
     else
         self.footer:SetText("Guildmates need MYC. /myc sync to refresh.")
     end
@@ -340,6 +378,7 @@ function W:Show(tab)
     end
     self.frame:Show()
     R.PvP:Broadcast(false)
+    if self.tab == "quests" then R.Legacy:Broadcast(false) end
     self:Refresh()
 end
 

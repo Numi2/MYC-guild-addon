@@ -20,6 +20,7 @@ for _, name in ipairs({
     "SetWordWrap", "SetTextColor", "ClearAllPoints", "EnableMouseWheel",
 }) do methods[name] = function() end end
 function methods:Hide() self.shown = false end
+function methods:SetSize(width, height) self.width, self.height = width, height end
 function methods:Show() self.shown = true end
 function methods:IsShown() return self.shown end
 function methods:SetShown(shown) self.shown = shown end
@@ -57,7 +58,8 @@ local function client(first, surname)
         roster = { "Numi-Tumi", "Rhea-Tide", "Other-Sailor" }, combat = false, instance = false,
     }
     env.issecretvalue = function(value) return rawequal(value, SECRET) end
-    env.time = function() return c.epoch end
+    env.time = function() return math.floor(c.epoch) end
+    env.GetServerTime = function() return math.floor(c.epoch) end
     env.GetTime = function() return c.clock end
     env.date = os.date
     env.IsInGuild = function() return c.guild ~= nil end
@@ -113,6 +115,7 @@ local function client(first, surname)
     env.C_GuildInfo = { GuildRoster = function() end }
     env.C_Map = {
         GetBestMapForUnit = function() return 37 end,
+        GetMapInfo = function(id) return { name = id == 37 and "Elwynn Forest" or "Hillsbrad Foothills" } end,
         GetPlayerMapPosition = function() return { GetXY = function() return 0.35, 0.45 end } end,
     }
     c.quests = { { questID = 100, title = "A shared quest" }, { questID = 101, title = "Finished" } }
@@ -133,7 +136,33 @@ local function client(first, surname)
     }
     env.C_Item = { GetItemNameByID = function(id) return id == 2000 and "Copper sword" or "Copper armor" end }
     env.TooltipDataProcessor = { AddTooltipPostCall = function(_, fn) c.tooltipHook = fn end }
-    env.Enum = { TooltipDataType = { Item = 0 } }
+    env.Enum = { TooltipDataType = { Item = 0 }, ContentTrackingType = { Achievement = 2 } }
+    env.Constants = { LegacyConsts = { LEGACY_POINTS_TRAIT_CURRENCY_ID = 4225 } }
+    c.tracked = { 900 }
+    c.legacy = {
+        [900] = { name = "Dungeon companions", accountDone = true, earned = false, points = 10,
+            criteria = {
+                { name = "Defeat Baron Rivendare", quantity = 0, required = 1, done = false },
+                { name = "Defeat Gandling", quantity = 1, required = 1, done = true },
+            } },
+        [901] = { name = "Profession milestone", points = 5,
+            criteria = { { name = "Reach 150 skill", quantity = 100, required = 150, done = false } } },
+        [902] = { name = "Ordinary achievement", points = 0, criteria = {} },
+    }
+    env.C_ContentTracking = { GetTrackedIDs = function() return c.tracked end }
+    env.C_Traits = { GetTraitCurrencyForAchievement = function(currency, id)
+        assert(currency == 4225, "Legacy currency")
+        return c.legacy[id] and c.legacy[id].points
+    end }
+    env.GetAchievementInfo = function(id)
+        local row = c.legacy[id]
+        if row then return id, row.name, 10, row.accountDone or false, nil, nil, nil, "", 0, 0, "", false, row.earned or false end
+    end
+    env.GetAchievementNumCriteria = function(id) return #(c.legacy[id] and c.legacy[id].criteria or {}) end
+    env.GetAchievementCriteriaInfo = function(id, i)
+        local row = c.legacy[id].criteria[i]
+        return row.name, 0, row.done, row.quantity, row.required
+    end
     local R = {}
     for line in io.lines(root .. "/MYCRadar/MYCRadar.toc") do
         if line:match("%.lua$") then
@@ -180,7 +209,7 @@ end
 
 local a, b = client("Numi", "Tumi"), client("Rhea", "Tide")
 local R = a.R
-equal(R.version, "2.0.0")
+equal(R.version, "2.1.0")
 equal(a.prefix, "MYCRadar2")
 check(R.commReady, "prefix registration")
 check(R.rosterReady, "guild roster loaded")
@@ -410,6 +439,7 @@ check(not b.R.Bounties:IsListed("bone hammer"), "removed bounty stays removed on
 equal(b.R:GuildDB().pvp["numi tumi"].bountyKills, 2, "PvP score round-trips")
 equal(b.R.peers["numi tumi"].recipes[2000], 1000, "crafting snapshot round-trips")
 check(b.R.peers["numi tumi"].quests[100], "quest snapshot round-trips")
+check(b.R.peers["numi tumi"].legacy["900:1"], "Legacy snapshot round-trips")
 local utf8name = string.rep("Æ", 20) .. " " .. string.rep("ø", 18)
 check(R:ValidName(utf8name), "UTF-8 names accepted within the byte budget")
 R.Net:Clear()
@@ -429,6 +459,8 @@ a:event("PLAYER_GUILD_UPDATE")
 equal(#R.Bounties:List(), 0, "bounties scoped to guild")
 check(not next(R.peers), "peers cleared on guild switch")
 check(not next(R.PvP.enemies), "victim identity cleared on guild switch")
+check(not next(R.Legacy.own), "Legacy goals cleared on guild switch")
+check(not next(R.Bounties.sightings), "sightings cleared on guild switch")
 equal(#R.Net.queue, 0, "no prior guild packets survive")
 a.guild = nil
 a:event("PLAYER_GUILD_UPDATE")
@@ -448,5 +480,165 @@ check(c.R.Window.footer:GetText():find("unavailable", 1, true), "unavailable cre
 c.hk = SECRET
 c.R.PvP:Broadcast(true)
 equal(c.R.PvP:Local().lifetime, 123, "secret lifetime stats cannot replace last readable value")
+
+-- Selected Legacy goals match the same unfinished objective, not merely a challenge.
+local d, e = client("Numi", "Tumi"), client("Rhea", "Tide")
+local D, E = d.R, e.R
+D.Legacy:Broadcast(true)
+E.Legacy:Broadcast(true)
+check(D.Legacy.own["900:1"], "account-wide completion does not hide character progress")
+check(not D.Legacy.own["900:2"], "completed criterion excluded")
+d:drain()
+for _, packet in ipairs(d.sent) do E.Net:Receive(packet.message, packet.channel, "Numi-Tumi") end
+equal(#E.Legacy:Matches(), 1, "matching unfinished Legacy objective")
+E.Window:Show("quests")
+E.Window.questViews.legacy.scripts.OnClick()
+equal(#E.Window:Data(), 1, "Legacy lives inside quest tab")
+equal(E.Window.rows[1].data.left, "Defeat Baron Rivendare")
+equal(E.Window.frame.width, 390, "Legacy preserves compact window width")
+equal(E.Window.frame.height, 340, "Legacy preserves compact window height")
+check(E.Window.rows[1].data.detail:find("You: 0/1", 1, true), "tooltip includes progress")
+E.Window.rows[1].scripts.OnClick()
+equal(e.whisper, "Numi-Tumi", "Legacy row whispers the witness")
+E.Window.search:SetText("Dungeon companions")
+equal(#E.Window:Data(), 1, "search matches the parent challenge name")
+E.Window.search:SetText("")
+local savedSeen = E.peers["numi tumi"].legacySeen
+E.peers["numi tumi"].legacySeen = E:Clock() - 420
+equal(#E.Legacy:Matches(), 0, "stale companions expire")
+E.peers["numi tumi"].legacySeen = savedSeen
+e.legacy[900].criteria[1].done = true
+E.Legacy:Broadcast(false)
+equal(#E.Legacy:Matches(), 0, "finishing local goal removes match immediately")
+e.legacy[900].criteria[1].done, e.legacy[900].criteria[2].done = true, false
+e.legacy[900].criteria[2].quantity = 0
+E.Legacy:Broadcast(false)
+equal(#E.Legacy:Matches(), 0, "different unfinished criterion is not a match")
+e.legacy[900].earned = true
+E.Legacy:Broadcast(false)
+check(not next(E.Legacy.own), "character-earned challenge excluded")
+e.legacy[900].earned = false
+e.tracked = { 901, 902, 901 }
+E.Legacy:Broadcast(false)
+equal(E.Legacy.tracked, 1, "only unique Legacy challenges count")
+check(E.Legacy.own["901:1"], "selected profession goal shared")
+check(not E.Legacy.own["902:0"], "ordinary achievement excluded")
+e.legacy[901].criteria[1].quantity = SECRET
+E.Legacy:Broadcast(false)
+check(not next(E.Legacy.own), "secret progress excluded")
+e.legacy[901].criteria[1].quantity = 100
+e.tracked = {}
+e.timers = {}
+e:advance(21)
+E.Net:Clear()
+E.Legacy:Broadcast(true)
+equal(E.Net.queue[1].text:sub(-1), "|", "untracking emits empty snapshot")
+local peer = E.peers["numi tumi"]
+local revision = peer.revisions.L + 100
+E.Net:Receive(string.format("S|L|%.0f|1|1||900:1:0:1,broken", revision), "GUILD", "Numi-Tumi")
+check(peer.legacy["900:1"], "malformed Legacy snapshot is atomic")
+E.Net:Receive(string.format("S|L|%.0f|1|1||900:1:1:1", revision), "GUILD", "Numi-Tumi")
+check(peer.legacy["900:1"], "completed peer progress rejected")
+E.Net:Receive(string.format("S|L|%.0f|1|1||", revision), "GUILD", "Numi-Tumi")
+check(not next(peer.legacy), "empty snapshot clears removed goals")
+E.Net:Receive(string.format("S|L|%.0f|1|1||900:1:0:1", revision - 1), "GUILD", "Numi-Tumi")
+check(not next(peer.legacy), "stale Legacy snapshot cannot revive goals")
+e.env.C_ContentTracking = nil
+E.Legacy:Broadcast(false)
+check(not next(E.Legacy.own), "missing Legacy API degrades safely")
+E.Window:Refresh()
+check(E.Window.empty:GetText():find("unavailable", 1, true), "unsupported Legacy explained")
+
+-- Fresh witnessed reports travel from actual detection; remote reports never light the badge.
+d, e = client("Numi", "Tumi"), client("Rhea", "Tide")
+D, E = d.R, e.R
+check(D.Bounties:Add("Grave Light"))
+d:drain()
+for _, packet in ipairs(d.sent) do E.Net:Receive(packet.message, packet.channel, "Numi-Tumi") end
+d.sent, d.timers = {}, {}
+d.units.target = { first = "Grave", surname = "Light", faction = "Horde", class = "PALADIN", raceID = 5 }
+d:event("PLAYER_TARGET_CHANGED")
+local report
+for _, packet in ipairs(D.Net.queue) do if packet.text:sub(1, 2) == "T|" then report = packet.text end end
+check(report and #report <= 255, "observed bounty creates bounded report")
+local queueSize = #D.Net.queue
+D.Bounties:Scan()
+equal(#D.Net.queue, queueSize, "repeated scans coalesce reports")
+-- Bring both clocks to the observation time before simulating delivery.
+e:advance(d.epoch - e.epoch)
+E.Net:Receive(report, "GUILD", "Numi-Tumi")
+local sighting = E.Bounties:GetSighting("grave light")
+check(sighting, "guild sighting received")
+equal(sighting.witness, "Numi-Tumi", "witness comes from channel sender")
+equal(sighting.map, 37)
+equal(sighting.x, 3)
+check(not next(E.Bounties.nearby), "remote report is not a local detection")
+check(not E.Bounties.badge or not E.Bounties.badge:IsShown(), "remote report has no minimap badge")
+E.Window:Show("bounties")
+equal(E.Window.frame.height, 374, "reports preserve bounty window height")
+check(E.Window.rows[1].data.right:find("Elwynn Forest", 1, true), "report row shows observer area")
+check(E.Window.rows[1].data.detail:find("Witness: Numi-Tumi", 1, true), "hover identifies witness")
+equal(E.PvP:Local().bountyKills, 0, "sighting cannot award points")
+local expiry = sighting.expires
+e:advance(30)
+E.Net:Receive(report, "GUILD", "Numi-Tumi")
+equal(E.Bounties:GetSighting("grave light").expires, expiry, "duplicate cannot refresh report lifetime")
+E.Net:Receive(report, "GUILD", "Outsider Person")
+check(not E.peers["outsider person"], "outside witness rejected")
+E.Net:Receive(report, "WHISPER", "Numi-Tumi")
+equal(E.Bounties:GetSighting("grave light").expires, expiry, "non-guild reports ignored")
+local revisionText, observedText = report:match("^T|(%d+)|(%d+)|")
+local function reportAt(timestamp, name, coords)
+    return string.format("T|%.0f|%.0f|%s|%s", tonumber(revisionText) + 100, timestamp, coords or "37|3|4", name or "Grave Light")
+end
+E.Net:Receive(reportAt(E:ServerNow() + 60), "GUILD", "Numi-Tumi")
+equal(E.Bounties:GetSighting("grave light").expires, expiry, "future reports rejected")
+E.Net:Receive(reportAt(E:ServerNow(), "Unknown Victim"), "GUILD", "Numi-Tumi")
+check(not E.Bounties.sightings["unknown victim"], "unlisted names cannot create reports")
+E.Net:Receive(reportAt(E:ServerNow(), nil, "37|55|4"), "GUILD", "Numi-Tumi")
+equal(E.Bounties:GetSighting("grave light").expires, expiry, "invalid map tile rejected")
+-- A newer witness wins; an older report from a third client cannot replace it.
+local newer = reportAt(E:ServerNow(), nil, "47|5|6")
+E.Net:Receive(newer, "GUILD", "Other-Sailor")
+equal(E.Bounties:GetSighting("grave light").witness, "Other-Sailor", "newest witness replaces earlier report")
+E.Net:Receive(reportAt(tonumber(observedText) + 1), "GUILD", "Numi-Tumi")
+equal(E.Bounties:GetSighting("grave light").map, 47, "out-of-order older report cannot replace latest area")
+E.roster["other sailor"] = nil
+check(not E.Bounties:GetSighting("grave light"), "departed witness is removed immediately")
+-- Restore the original observation for the absolute expiry boundary.
+E.peers["numi tumi"].sightingRevisions = {}
+E.Net:Receive(report, "GUILD", "Numi-Tumi")
+e:advance(60)
+check(not E.Bounties:GetSighting("grave light"), "report expires at 90 seconds")
+E.Net:Receive(report, "GUILD", "Numi-Tumi")
+check(not E.Bounties:GetSighting("grave light"), "expired observation cannot be replayed")
+E.Window:Refresh()
+equal(E.Window.rows[1].data.right, "10 pts", "expired report restores reward text")
+-- Delayed transport cannot renew old intelligence after leaving combat.
+D.Net:Clear()
+d.sent = {}
+d:advance(30)
+d.combat = true
+D.Bounties:Scan()
+check(#D.Net.queue > 0, "combat observation queued")
+d:advance(91)
+d.units.target = nil
+D.Bounties:Scan()
+check(not D.Bounties:GetSighting("grave light"), "local historical observation expires")
+d.combat = false
+d:drain()
+equal(#d.sent, 0, "expired queued sighting is dropped before transmission")
+d.instance = true
+d.units.target = { first = "Grave", surname = "Light", faction = "Horde" }
+D.Bounties:Scan()
+equal(#D.Net.queue, 0, "instance sightings are not shared")
+d.instance = false
+D.Bounties:Scan()
+check(D.Bounties:GetSighting("grave light"), "fresh observation replaces expired report")
+check(D.Bounties:Remove("Grave Light"))
+check(not D.Bounties:GetSighting("grave light"), "removed bounty hides its sighting")
+d.env.SlashCmdList.MYCRADAR("off")
+check(not next(D.Bounties.sightings), "disable clears ephemeral reports")
+check(not next(D.Legacy.own), "disable clears shared Legacy goals")
 
 print("PASS: " .. assertions .. " assertions")

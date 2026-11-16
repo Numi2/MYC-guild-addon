@@ -9,7 +9,7 @@ function Q:Invalidate()
     self.own, self.title, self.map = {}, {}, nil
 end
 
-function Q:Snapshot()
+function Q:Area()
     local map, x, y = 0, 99, 99
     if C_Map and C_Map.GetBestMapForUnit then
         local ok, current = pcall(C_Map.GetBestMapForUnit, "player")
@@ -25,6 +25,11 @@ function Q:Snapshot()
             end
         end
     end
+    return map, x, y
+end
+
+function Q:Snapshot()
+    local map, x, y = self:Area()
     local ids, own, titles = {}, {}, {}
     if C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo then
         local ok, total = pcall(C_QuestLog.GetNumQuestLogEntries)

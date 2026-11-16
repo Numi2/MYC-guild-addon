@@ -1,6 +1,6 @@
 local addonName, R = ...
 R.name = addonName
-R.version = "2.0.0"
+R.version = "2.1.0"
 R.prefix = "MYCRadar2"
 R.peers = {}
 R.roster = {}
@@ -23,6 +23,10 @@ end
 
 function R:Clock()
     return (GetTime and GetTime()) or 0
+end
+
+function R:ServerNow()
+    return self:SafeNumber(self:Read(GetServerTime), 1, 9999999999) or self:Now()
 end
 
 function R:SafeNumber(n, minimum, maximum)
@@ -110,6 +114,7 @@ function R:UpdateGuild()
         self.alertKeys = {}
         if self.Net then self.Net:Clear() end
         if self.Quests then self.Quests:Invalidate() end
+        if self.Legacy then self.Legacy:Invalidate() end
         if self.PvP then self.PvP:ClearSession() end
         if self.Bounties then self.Bounties:ClearNearby() end
         if self.Professions then self.Professions.lastBroadcast = -9999 end

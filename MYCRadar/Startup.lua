@@ -10,6 +10,7 @@ function R:Sync(request)
         self.Net:Queue("H", "H", true)
     end
     self.Quests:Broadcast(true)
+    self.Legacy:Broadcast(true)
     self.PvP:Broadcast(true)
     self.Bounties:Broadcast(true)
     self.Professions:Broadcast(true)
@@ -35,6 +36,7 @@ local function Start()
         C_Timer.NewTicker(60, function()
             R:UpdateGuild()
             R.Quests:Broadcast(false)
+            R.Legacy:Broadcast(false)
             R.PvP:Broadcast(false)
             R.PvP:Prune()
             R.Bounties:Broadcast(false)
@@ -83,6 +85,7 @@ f:SetScript("OnEvent", function(_, event, ...)
     elseif event == "PLAYER_ENTERING_WORLD" then
         R:UpdateGuild()
         R.Quests:Soon()
+        R.Legacy:Soon()
         R.PvP:Broadcast(false)
         R.Bounties:Broadcast(false)
     elseif event == "ZONE_CHANGED_NEW_AREA" or event == "ZONE_CHANGED" or event == "QUEST_LOG_UPDATE" or
@@ -90,6 +93,10 @@ f:SetScript("OnEvent", function(_, event, ...)
         R.Quests:Soon()
     elseif event == "TRADE_SKILL_SHOW" or event == "TRADE_SKILL_UPDATE" or event == "TRADE_SKILL_LIST_UPDATE" then
         R.Professions:Soon()
+    elseif event == "CRITERIA_UPDATE" or event == "ACHIEVEMENT_EARNED" or
+        event == "TRACKED_ACHIEVEMENT_UPDATE" or event == "TRACKED_ACHIEVEMENT_LIST_CHANGED" or
+        event == "CONTENT_TRACKING_UPDATE" then
+        R.Legacy:Soon()
     elseif event == "NAME_PLATE_UNIT_ADDED" then
         local unit = ...
         if not R:IsSecret(unit) and type(unit) == "string" and unit:match("^nameplate%d+$") then
@@ -118,6 +125,8 @@ for _, event in ipairs({
     "TRADE_SKILL_SHOW", "TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE",
     "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED", "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT",
     "PLAYER_REGEN_ENABLED", "CHAT_MSG_COMBAT_HONOR_GAIN", "PLAYER_PVP_KILLS_CHANGED",
+    "CRITERIA_UPDATE", "ACHIEVEMENT_EARNED", "TRACKED_ACHIEVEMENT_UPDATE",
+    "TRACKED_ACHIEVEMENT_LIST_CHANGED", "CONTENT_TRACKING_UPDATE",
 }) do
     if not pcall(f.RegisterEvent, f, event) then R.failedEvents[event] = true end
 end
@@ -161,6 +170,7 @@ SlashCmdList.MYCRADAR = function(input)
         R.db.settings.enabled = false
         R.Net:Clear()
         R.Bounties:ClearNearby()
+        R.Legacy:Invalidate()
         R.PvP:ClearSession()
         if R.toastFrame then R.toastFrame:Hide() end
         R.Window:Refresh()
