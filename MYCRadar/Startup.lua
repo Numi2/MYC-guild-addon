@@ -114,6 +114,8 @@ f:SetScript("OnEvent", function(_, event, ...)
         local lineID = select(11, ...)
         R.PvP:OnHonor(message, lineID)
         SampleSoon()
+    elseif event == "PARTY_KILL" then
+        R.PvP:OnPartyKill(...)
     elseif event == "PLAYER_PVP_KILLS_CHANGED" then
         SampleSoon()
     end
@@ -124,7 +126,7 @@ for _, event in ipairs({
     "ZONE_CHANGED_NEW_AREA", "ZONE_CHANGED", "QUEST_LOG_UPDATE", "QUEST_ACCEPTED", "QUEST_REMOVED", "QUEST_TURNED_IN",
     "TRADE_SKILL_SHOW", "TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE",
     "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED", "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT",
-    "PLAYER_REGEN_ENABLED", "CHAT_MSG_COMBAT_HONOR_GAIN", "PLAYER_PVP_KILLS_CHANGED",
+    "PLAYER_REGEN_ENABLED", "CHAT_MSG_COMBAT_HONOR_GAIN", "PLAYER_PVP_KILLS_CHANGED", "PARTY_KILL",
     "CRITERIA_UPDATE", "ACHIEVEMENT_EARNED", "TRACKED_ACHIEVEMENT_UPDATE",
     "TRACKED_ACHIEVEMENT_LIST_CHANGED", "CONTENT_TRACKING_UPDATE",
 }) do
@@ -141,6 +143,10 @@ local function status()
     R:Chat("Guild sync " .. (R.commReady and "ready" or "unavailable") ..
         ". Named honorable kill tracking " ..
         ((#R.PvP:HonorFormats() > 0 and not R.failedEvents.CHAT_MSG_COMBAT_HONOR_GAIN) and "available" or "unavailable") .. ".")
+    local stats = R.PvP.killStats
+    R:Chat("Personal kill event " .. (R.failedEvents.PARTY_KILL and "unavailable" or "registered") ..
+        " | Received: " .. stats.events .. " | Hidden: " .. stats.hidden ..
+        " | Unmapped: " .. stats.unmapped .. " | Added: " .. stats.recorded .. ".")
     for event in pairs(R.failedEvents) do R:Chat("Unsupported event: " .. event) end
 end
 

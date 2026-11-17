@@ -4,8 +4,8 @@ A minimal guild addon for **WoW: Forever**, interface **16001**. Type **/myc** f
 
 **[Download MYCRadar.zip](MYCRadar.zip?raw=true)** · **[Full instructions](MYCRadar/README.md)**
 
-- **PvP rankings:** lifetime honorable kills, undead paladin honorable kills recorded by MYC, and bounty points.
-- **Guild bounty board:** full Horde names, local minimap sightings and guild reports that expire after 90 seconds. Hover for the witness and approximate observer area. Named honorable-kill credit awards **10 points per victim per UTC day**.
+- **PvP rankings:** lifetime honorable kills, undead paladin kills recorded by MYC (including confirmed personal kills with no honor), and bounty points.
+- **Guild bounty board:** full Horde names, local minimap sightings and guild reports that expire after 90 seconds. Hover for the witness and approximate observer area. Honor credit or a confirmed personal kill awards **10 points per victim per UTC day**, even without honor.
 - **Shared quests and Legacy companions:** find guildmates on the same unfinished quest in your zone, or the same unfinished objective in a tracked Legacy challenge; click to whisper.
 - **Guild crafters:** searchable learned recipes, item tooltips and click-to-whisper.
 
@@ -19,7 +19,7 @@ Guildmates install the same version. Replace the addon folder when upgrading; Sa
 
 ## What the client permits
 
-The minimap badge is a **visible-player sighting**, not a precise enemy-position dot. MYC cannot detect hidden players. Kill categories use **honorable-kill credit, including shared kills**, rather than final blows. Undead paladin and bounty credit require a readable named honor message and recent readable identity data; unsupported signals are reported in the window and **/myc status**.
+The minimap badge is a **visible-player sighting**, not a precise enemy-position dot. MYC cannot detect hidden players. Custom kill counters accept **named honorable-kill credit, including shared kills**, or a readable standalone **PARTY_KILL** event credited to you or your pet. This second path records no-honor kills using a recent exact victim-ID observation. A corpse or someone else's killing blow alone never scores. Undead paladin classification needs recent readable race/class data. Hidden kill IDs are skipped and reported by **/myc status**; event registration does not guarantee readable delivery in live PvP.
 
 Custom counters start when recorded by MYC. Lifetime HK totals come from WoW. Rankings and listings are last-shared guild data, not server-authoritative competition results. See the [user guide](MYCRadar/README.md) for scoring, storage and synchronization behavior.
 

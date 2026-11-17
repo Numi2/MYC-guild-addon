@@ -1,12 +1,21 @@
 local _, R = ...
-R.PvP = { enemies = {}, seen = {}, lastBroadcast = -9999 }
+R.PvP = {}
 local P = R.PvP
 local MAX_COUNT = 100000000
+local KILL_WINDOW = 10
+
+local function playerGUID(value)
+    if R:IsSecret(value) or type(value) ~= "string" or #value > 80 then return nil end
+    return value:match("^Player%-%d+%-%x+$") and value or nil
+end
 
 function P:ClearSession()
     self.enemies, self.seen = {}, {}
+    self.guids, self.killCredits, self.personalDeaths = {}, {}, {}
+    self.killStats = { events = 0, hidden = 0, unmapped = 0, duplicates = 0, recorded = 0 }
     self.lastBroadcast = -9999
 end
+P:ClearSession()
 
 function P:Local()
     local db = R:CharGuildDB()
@@ -26,6 +35,16 @@ function P:Observe(unit, name, faction)
     local readable = not R:IsSecret(class) and not R:IsSecret(race) and not R:IsSecret(raceID)
         and type(class) == "string" and (type(race) == "string" or type(raceID) == "number")
     local previous = self.enemies[key]
+    local guid = playerGUID(R:Read(UnitGUID, unit))
+    if previous and guid and previous.guid and guid ~= previous.guid then
+        self.guids[previous.guid] = nil
+        previous = nil
+    end
+    guid = guid or (previous and previous.guid)
+    local dead = R:Read(UnitIsDeadOrGhost, unit)
+    if R:IsSecret(dead) or type(dead) ~= "boolean" then dead = previous and previous.dead end
+    local life = previous and previous.life or 1
+    if previous and previous.dead == true and dead == false then life = life + 1 end
     local classified = readable and class == "PALADIN" and
         (race == "Scourge" or race == "Undead" or raceID == 5) or false
     local classifiedAt = readable and R:Clock() or nil
@@ -33,9 +52,12 @@ function P:Observe(unit, name, faction)
         classified, classifiedAt = previous.undeadPaladin, previous.classifiedAt
     end
     self.enemies[key] = {
+        name = R:CleanName(name),
         time = R:Clock(), horde = faction == "Horde",
         undeadPaladin = classified, classifiedAt = classifiedAt,
+        guid = guid, dead = dead, life = life,
     }
+    if guid then self.guids[guid] = key end
 end
 
 -- Compile Blizzard's localized printf template, including reordered %1$s fields.
@@ -104,11 +126,67 @@ function P:OnHonor(message, lineID)
     self.seen[id] = now
     local enemy = self.enemies[key]
     if not enemy or now - enemy.time > 180 then return end
+    self:Credit(name, key, enemy, "honor")
+end
+
+-- PARTY_KILL is a standalone client event, not the restricted combat log.
+-- A teammate's killing blow alone does not prove this player's participation.
+function P:OnPartyKill(attackerGUID, targetGUID)
+    if not R:InGuild() then return end
+    local stats = self.killStats
+    stats.events = stats.events + 1
+    if R:IsSecret(attackerGUID) or R:IsSecret(targetGUID) then
+        stats.hidden = stats.hidden + 1
+        return
+    end
+    targetGUID = playerGUID(targetGUID)
+    if not targetGUID or type(attackerGUID) ~= "string" then return end
+    local mine = R:Read(UnitGUID, "player")
+    if R:IsSecret(mine) then
+        stats.hidden = stats.hidden + 1
+        return
+    end
+    if not playerGUID(mine) then return end
+    if attackerGUID ~= mine then
+        local pet = R:Read(UnitGUID, "pet")
+        if R:IsSecret(pet) then stats.hidden = stats.hidden + 1; return end
+        if attackerGUID ~= pet then return end
+    end
+    -- The event can arrive before the next one-second nameplate scan.
+    R.Bounties:Scan()
+    local key, now = self.guids[targetGUID], R:Clock()
+    local enemy = key and self.enemies[key]
+    if not enemy or enemy.guid ~= targetGUID or not enemy.horde or now - enemy.time > 180 then
+        stats.unmapped = stats.unmapped + 1
+        return
+    end
+    local previous = self.personalDeaths[targetGUID]
+    if previous and previous.life == enemy.life and now - previous.time <= KILL_WINDOW then
+        stats.duplicates = stats.duplicates + 1
+        return
+    end
+    self.personalDeaths[targetGUID] = { life = enemy.life, time = now }
+    if self:Credit(enemy.name, key, enemy, "personal") then stats.recorded = stats.recorded + 1 end
+end
+
+function P:Credit(name, key, enemy, source)
+    local now, previous = R:Clock(), self.killCredits[key]
+    local credit
+    if previous and previous.life == enemy.life and now - previous.time <= KILL_WINDOW and
+        not previous[source] then
+        -- Honor and personal credit may arrive in either order for one death.
+        credit = previous
+    else
+        credit = { time = now, life = enemy.life }
+        self.killCredits[key] = credit
+    end
+    credit[source] = true
     local db = self:Local()
     if not db then return end
     local changed = false
-    if enemy.undeadPaladin and enemy.classifiedAt and now - enemy.classifiedAt <= 180 then
+    if not credit.undeadAwarded and enemy.undeadPaladin and enemy.classifiedAt and now - enemy.classifiedAt <= 180 then
         db.undeadPaladins = (db.undeadPaladins or 0) + 1
+        credit.undeadAwarded = true
         changed = true
     end
     -- One reward per full victim name per UTC day, regardless of sponsors.
@@ -116,13 +194,15 @@ function P:OnHonor(message, lineID)
     for victim, claimedDay in pairs(db.claimed) do
         if claimedDay ~= day then db.claimed[victim] = nil end
     end
-    if enemy.horde and R.Bounties:IsListed(key) and db.claimed[key] ~= day then
+    if not credit.bountyAwarded and enemy.horde and R.Bounties:IsListed(key) and db.claimed[key] ~= day then
         db.claimed[key] = day
         db.bountyKills = (db.bountyKills or 0) + 1
+        credit.bountyAwarded = true
         R:Chat("+10 bounty points: " .. R:CleanName(name) .. ".")
         changed = true
     end
     if changed then self:Broadcast(true) end
+    return changed
 end
 
 function P:Sample()
@@ -190,6 +270,14 @@ end
 
 function P:Prune()
     for key, row in pairs(self.enemies) do
-        if R:Clock() - row.time > 180 then self.enemies[key] = nil end
+        if R:Clock() - row.time > 180 then
+            if row.guid then self.guids[row.guid] = nil end
+            self.enemies[key] = nil
+        end
+    end
+    for _, cache in ipairs({ self.killCredits, self.personalDeaths }) do
+        for key, row in pairs(cache) do
+            if R:Clock() - row.time > KILL_WINDOW then cache[key] = nil end
+        end
     end
 end
