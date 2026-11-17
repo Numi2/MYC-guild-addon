@@ -75,6 +75,12 @@ local function client(first, surname)
         if row then return row.first, row.surname end
     end
     env.UnitName = function(unit) return env.UnitFullName(unit) end
+    c.guid = "Player-1-00000001"
+    env.UnitGUID = function(unit)
+        if unit == "player" then return c.guid end
+        if unit == "pet" then return c.petGUID end
+        return c.units[unit] and c.units[unit].guid
+    end
     env.UnitExists = function(unit) return c.units[unit] ~= nil end
     env.UnitIsVisible = function(unit) return c.units[unit] and c.units[unit].visible ~= false or false end
     env.UnitIsPlayer = function(unit) return c.units[unit] and c.units[unit].player ~= false or false end
@@ -209,7 +215,7 @@ end
 
 local a, b = client("Numi", "Tumi"), client("Rhea", "Tide")
 local R = a.R
-equal(R.version, "2.1.0")
+equal(R.version, "2.2.0")
 equal(a.prefix, "MYCRadar2")
 check(R.commReady, "prefix registration")
 check(R.rosterReady, "guild roster loaded")
@@ -476,6 +482,9 @@ check(not c.R.db.guilds["Old Guild@Forever"].prices, "legacy auction data remove
 c.env.COMBATLOG_HONORGAIN, c.env.COMBATLOG_HONORGAIN_NO_RANK = nil, nil
 equal(#c.R.PvP:HonorFormats(), 0, "unsupported kill parser has no fabricated fallback")
 c.R.Window:Show("bounties")
+check(not c.R.Window.footer:GetText():find("unavailable", 1, true), "personal kill credit remains when honor parser is absent")
+c.R.failedEvents.PARTY_KILL = true
+c.R.Window:Refresh()
 check(c.R.Window.footer:GetText():find("unavailable", 1, true), "unavailable credit explained in UI")
 c.hk = SECRET
 c.R.PvP:Broadcast(true)
@@ -640,5 +649,154 @@ check(not D.Bounties:GetSighting("grave light"), "removed bounty hides its sight
 d.env.SlashCmdList.MYCRADAR("off")
 check(not next(D.Bounties.sightings), "disable clears ephemeral reports")
 check(not next(D.Legacy.own), "disable clears shared Legacy goals")
+
+-- Personal kill credit must not require honor, guess from corpses, or double-count
+-- the separate honor message delivered for the same death.
+local k = client("Numi", "Tumi")
+local K = k.R
+local victimGUID = "Player-1-00000002"
+k.units.target = {
+    first = "Grave", surname = "Light", faction = "Horde", class = "PALADIN",
+    race = "Scourge", raceID = 5, guid = victimGUID,
+}
+check(K.Bounties:Add("Grave Light"))
+k:event("PLAYER_TARGET_CHANGED")
+k.units.target.dead = true
+K.Bounties:Scan()
+k:event("PARTY_KILL", k.guid, victimGUID)
+equal(K.PvP:Local().undeadPaladins, 1, "personal no-honor undead paladin kill counts")
+equal(K.PvP:Local().bountyKills, 1, "personal no-honor bounty kill awards points")
+equal(K.PvP:Local().lifetime, 123, "no-honor kill does not alter WoW lifetime HKs")
+k:event("PARTY_KILL", k.guid, victimGUID)
+equal(K.PvP:Local().undeadPaladins, 1, "duplicate native kill event ignored")
+k:honor("Grave Light", 90001)
+equal(K.PvP:Local().undeadPaladins, 1, "honor after personal credit does not count twice")
+k:honor("Grave Light", 90001)
+equal(K.PvP:Local().undeadPaladins, 1, "duplicate honor after personal credit ignored")
+
+-- A witnessed resurrection starts another life even within the merge window.
+k:advance(2)
+k.units.target.dead = false
+k:event("PLAYER_TARGET_CHANGED")
+k.units.target.dead = true
+K.Bounties:Scan()
+k:honor("Grave Light", 90002)
+k:event("PARTY_KILL", k.guid, victimGUID)
+equal(K.PvP:Local().undeadPaladins, 2, "personal after honor is also deduplicated")
+equal(K.PvP:Local().bountyKills, 1, "no-honor path keeps the daily victim cap")
+
+k:advance(2)
+k.units.target.dead = false
+k:event("PLAYER_TARGET_CHANGED")
+k.petGUID = "Pet-0-1-2-3-4-00000001"
+k.units.target.dead = true
+K.Bounties:Scan()
+k:event("PARTY_KILL", k.petGUID, victimGUID)
+equal(K.PvP:Local().undeadPaladins, 3, "your pet's confirmed kill counts without honor")
+
+-- Nearby deaths, other people's blows and hidden GUIDs are not personal credit.
+k:advance(11)
+k:event("UNIT_DIED", victimGUID)
+K.Bounties:Scan()
+equal(K.PvP:Local().undeadPaladins, 3, "a corpse or bare death event cannot score")
+k:event("PARTY_KILL", "Player-1-00000003", victimGUID)
+equal(K.PvP:Local().undeadPaladins, 3, "teammate's blow alone cannot score for you")
+k:event("PARTY_KILL", SECRET, victimGUID)
+k:event("PARTY_KILL", k.guid, SECRET)
+k:event("PARTY_KILL", k.guid, "Creature-0-1-2-3-4-00000002")
+k:event("PARTY_KILL", k.guid, "Player-1-00000099")
+equal(K.PvP:Local().undeadPaladins, 3, "secret, NPC and unseen victim IDs cannot score")
+
+-- Secret reads do not overwrite an identity observed before combat.
+k.units.target.dead = false
+k:event("PLAYER_TARGET_CHANGED")
+k.units.target.class, k.units.target.guid = SECRET, SECRET
+k.combat = true
+k:event("PLAYER_TARGET_CHANGED")
+k:event("PARTY_KILL", k.guid, victimGUID)
+equal(K.PvP:Local().undeadPaladins, 4, "readable kill credit uses recent cached identity")
+k:advance(181)
+k:event("PARTY_KILL", k.guid, victimGUID)
+equal(K.PvP:Local().undeadPaladins, 4, "expired classification cannot score a personal kill")
+k.combat = false
+
+-- A first-seen dead target may resolve a real kill event, but cannot score itself.
+local m = client("Numi", "Tumi")
+m.units.target = {
+    first = "Bone", surname = "Hammer", faction = "Horde", class = "PALADIN",
+    race = "Undead", raceID = 5, guid = "Player-1-00000005", dead = true,
+}
+m:event("PARTY_KILL", m.guid, "Player-1-00000005")
+equal(m.R.PvP:Local().undeadPaladins, 1, "kill event can resolve a still-visible victim before next scan")
+m.env.COMBATLOG_HONORGAIN, m.env.COMBATLOG_HONORGAIN_NO_RANK = nil, nil
+m:advance(2)
+m.units.target.dead = false
+m:event("PLAYER_TARGET_CHANGED")
+m.units.target.dead = true
+m.petGUID = SECRET
+m:event("PARTY_KILL", m.guid, "Player-1-00000005")
+equal(m.R.PvP:Local().undeadPaladins, 2, "personal kill needs neither honor templates nor readable pet identity")
+local receiver = client("Rhea", "Tide")
+m:drain()
+for _, packet in ipairs(m.sent) do receiver.R.Net:Receive(packet.message, packet.channel, "Numi-Tumi") end
+equal(receiver.R:GuildDB().pvp["numi tumi"].undeadPaladins, 2, "no-honor kills reach the guild leaderboard")
+equal(receiver.R:GuildDB().pvp["numi tumi"].lifetime, 123, "shared no-honor total does not change lifetime HKs")
+m.R.Window:Show("pvp")
+m.R.Window.metric = "undeadPaladins"
+m.R.Window:Refresh()
+equal(m.R.Window.rightHeading:GetText(), "KILLS", "custom counter is not mislabeled honorable kills")
+
+k.env.SlashCmdList.MYCRADAR("off")
+k:event("PARTY_KILL", k.guid, victimGUID)
+check(not next(K.PvP.guids), "disable clears cached victim GUIDs")
+equal(K.PvP:Local(), nil, "disabled addon cannot record personal kills")
+
+-- Unsupported event registration is caught and named honor credit still works.
+local registerEvent = methods.RegisterEvent
+methods.RegisterEvent = function(self, event)
+    if event == "PARTY_KILL" then error("unsupported event") end
+    registerEvent(self, event)
+end
+local unsupported = client("Numi", "Tumi")
+methods.RegisterEvent = registerEvent
+check(unsupported.R.failedEvents.PARTY_KILL, "unsupported personal event does not prevent startup")
+unsupported.units.target = {
+    first = "Grave", surname = "Light", faction = "Horde", class = "PALADIN", race = "Scourge", raceID = 5,
+}
+unsupported:event("PLAYER_TARGET_CHANGED")
+unsupported:honor("Grave Light", 90003)
+equal(unsupported.R.PvP:Local().undeadPaladins, 1, "honor fallback survives unsupported personal kill event")
+
+-- Same-name records cannot lend a previous GUID's race/class to another unit.
+local changed = client("Numi", "Tumi")
+changed.units.target = {
+    first = "Grave", surname = "Light", faction = "Horde", class = "PALADIN", race = "Scourge", raceID = 5,
+    guid = "Player-1-00000006",
+}
+changed:event("PLAYER_TARGET_CHANGED")
+changed.units.target.guid, changed.units.target.class = "Player-1-00000007", SECRET
+changed:event("PLAYER_TARGET_CHANGED")
+changed:event("PARTY_KILL", changed.guid, "Player-1-00000006")
+changed:event("PARTY_KILL", changed.guid, "Player-1-00000007")
+equal(changed.R.PvP:Local().undeadPaladins, 0, "changed GUID does not inherit prior race/class")
+changed.units.target.class = "PALADIN"
+changed:event("PLAYER_TARGET_CHANGED")
+changed:honor("Grave Light", 90004)
+equal(changed.R.PvP:Local().undeadPaladins, 1, "later readable classification completes the same kill's credit")
+changed:advance(181)
+changed.R.PvP:Prune()
+check(not next(changed.R.PvP.guids), "expired observed GUIDs are pruned")
+
+-- No-honor bounty rewards also become available again on the next UTC day.
+local daily = client("Numi", "Tumi")
+daily.units.target = {
+    first = "Grave", surname = "Light", faction = "Horde", class = "PALADIN", race = "Scourge", raceID = 5,
+    guid = victimGUID,
+}
+daily.R.Bounties:Add("Grave Light")
+daily:event("PARTY_KILL", daily.guid, victimGUID)
+daily:advance(86400)
+daily:event("PARTY_KILL", daily.guid, victimGUID)
+equal(daily.R.PvP:Local().bountyKills, 2, "next UTC day can reward a no-honor kill")
 
 print("PASS: " .. assertions .. " assertions")

@@ -224,7 +224,7 @@ function W:Data()
                     (sighting and (seconds .. "s · " .. area) or
                     (row.claimed and "|cff888888Claimed today|r" or (row.own and "10 pts / yours" or "10 pts"))),
                 detail = "Listed by " .. table.concat(row.authors, ", ") ..
-                    ". 10 points for named honorable kill credit, once per victim per UTC day." ..
+                    ". 10 points for honor credit or your confirmed kill, once per victim per UTC day." ..
                     (row.claimed and " You already earned this reward today." or "") ..
                     (sighting and ("\nLast sighting: " .. seconds .. " seconds ago. Witness: " .. witness ..
                         ". Observer area: " .. area .. (sighting.x ~= 99 and sighting.y ~= 99 and
@@ -326,7 +326,8 @@ function W:Refresh()
     for _, control in ipairs({ self.input, self.add, self.remove }) do control:SetShown(self.tab == "bounties") end
     self.heading:SetText(self.tab == "pvp" and "GUILD MEMBER" or
         (self.tab == "bounties" and "HORDE CHARACTER" or (self.tab == "crafters" and "ITEM" or "QUEST")))
-    self.rightHeading:SetText(self.tab == "pvp" and (self.metric == "points" and "POINTS" or "HONORABLE KILLS") or
+    self.rightHeading:SetText(self.tab == "pvp" and (self.metric == "points" and "POINTS" or
+        (self.metric == "undeadPaladins" and "KILLS" or "HONORABLE KILLS")) or
         (self.tab == "bounties" and "SIGHTING / REWARD" or (self.tab == "crafters" and "CRAFTERS" or "GUILDMATE")))
     if self.tab == "quests" and self.questView == "legacy" then self.heading:SetText("LEGACY OBJECTIVE") end
     local data = self:Data()
@@ -356,12 +357,14 @@ function W:Refresh()
     self.footer:ClearAllPoints()
     self.footer:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 14, self.tab == "bounties" and -347 or -313)
     local named = #R.PvP:HonorFormats() > 0 and not R.failedEvents.CHAT_MSG_COMBAT_HONOR_GAIN
+    local personal = not R.failedEvents.PARTY_KILL
     if self.tab == "pvp" then
         self.footer:SetText(self.metric == "lifetime" and "WoW lifetime totals. Hover for the last shared update." or
-            (named and "Recorded by MYC. Shared honorable kills count." or "Named kill credit is unavailable on this client."))
+            ((named or personal) and "Honor credit + readable personal kills. No honor required." or
+                "Kill credit is unavailable on this client."))
     elseif self.tab == "bounties" then
-        self.footer:SetText(named and "Sightings expire after 90s. Hover for witness and reward." or
-            "Nearby alerts work; named kill credit is unavailable on this client.")
+        self.footer:SetText((named or personal) and "Sightings expire after 90s. Hover for witness and reward." or
+            "Nearby alerts work; kill credit is unavailable on this client.")
     elseif self.tab == "quests" and self.questView == "legacy" then
         self.footer:SetText("Track challenges in WoW's Legacy window. Click to whisper.")
     else
