@@ -102,6 +102,20 @@ function W:Create()
     end
     self.hint = label(f, "GameFontHighlightSmall", 14, -85)
     self.hint:SetWidth(362)
+    self.hint:SetWordWrap(false)
+    self.addTarget = button(f, "Add target", 107, 269, -83, function()
+        local _, message = R.Bounties:AddUnit("target")
+        R:Chat(message)
+        W:Refresh()
+    end)
+    self.addTarget:SetScript("OnEnter", function(b)
+        b.hover = true; b:Paint()
+        GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Add target", accent[1], accent[2], accent[3])
+        GameTooltip:AddLine(b.detail or "Select a Horde player first.", 0.85, 0.85, 0.85, true)
+        GameTooltip:Show()
+    end)
+    self.addTarget:SetScript("OnLeave", function(b) b.hover = false; b:Paint(); GameTooltip:Hide() end)
     self.questViews = {}
     for i, view in ipairs({ { "quests", "Shared quests" }, { "legacy", "Legacy goals" } }) do
         local key = view[1]
@@ -174,8 +188,8 @@ function W:Create()
     self.input:SetSize(205, 21)
     self.input:SetPoint("TOPLEFT", f, "TOPLEFT", 19, -311)
     self.input:SetAutoFocus(false)
-    self.input:SetMaxBytes(80)
-    self.input.placeholder = label(self.input, "GameFontDisableSmall", 3, -5, "Full Horde name")
+    self.input:SetMaxBytes(512)
+    self.input.placeholder = label(self.input, "GameFontDisableSmall", 3, -5, "Full name or player link")
     self.input:SetScript("OnTextChanged", function() W:Refresh() end)
     self.input:SetScript("OnEscapePressed", function(edit) edit:ClearFocus() end)
     self.input:SetScript("OnEnterPressed", function() W:ChangeBounty(false) end)
@@ -314,10 +328,18 @@ function W:Refresh()
     self.hint:SetShown(self.tab ~= "pvp" and self.tab ~= "quests")
     local own, count = R.Bounties:Own() or {}, 0
     for _ in pairs(own) do count = count + 1 end
-    self.hint:SetText(self.tab == "bounties" and ("Your names: " .. count .. "/5. Include the surname.") or
+    self.hint:SetWidth(self.tab == "bounties" and 245 or 362)
+    self.hint:SetText(self.tab == "bounties" and ("Your bounties: " .. count .. "/5") or
         (self.tab == "crafters" and "Open profession books to share. Click to whisper." or
         "Shared unfinished quests in your zone. Click to whisper."))
-    local inputKey = R:NameKey(self.input:GetText())
+    local targetName, targetMessage = R.Bounties:UnitNameForBounty("target")
+    local targetKey = R:NameKey(targetName)
+    self.addTarget:SetShown(self.tab == "bounties")
+    self.addTarget:SetEnabled(targetKey ~= nil and not own[targetKey] and count < 5)
+    self.addTarget.detail = targetName and ("Add " .. targetName .. ". The full name is copied exactly.") or targetMessage
+    if targetKey and own[targetKey] then self.addTarget.detail = targetName .. " is already on your list." end
+    if count >= 5 then self.addTarget.detail = "Your five bounties are full. Remove one to add another." end
+    local inputKey = R:NameKey(R.Bounties:InputName(self.input:GetText()))
     self.add:SetEnabled(inputKey ~= nil and not own[inputKey] and count < 5)
     self.remove:SetEnabled(inputKey ~= nil and own[inputKey] ~= nil)
     self.input.placeholder:SetShown(self.input:GetText() == "")

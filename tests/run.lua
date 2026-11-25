@@ -215,7 +215,7 @@ end
 
 local a, b = client("Numi", "Tumi"), client("Rhea", "Tide")
 local R = a.R
-equal(R.version, "2.2.0")
+equal(R.version, "2.3.0")
 equal(a.prefix, "MYCRadar2")
 check(R.commReady, "prefix registration")
 check(R.rosterReady, "guild roster loaded")
@@ -799,4 +799,64 @@ daily:advance(86400)
 daily:event("PARTY_KILL", daily.guid, victimGUID)
 equal(daily.R.PvP:Local().bountyKills, 2, "next UTC day can reward a no-honor kill")
 
+-- Bounties copy the client's exact Unicode name; no keyboard transcription.
+local u, v = client("Numi", "Tumi"), client("Rhea", "Tide")
+local U = u.R
+U.Window:Show("bounties")
+check(not U.Window.addTarget:IsEnabled(), "add-target disabled without a player target")
+u.units.target = { first = "Mørk", surname = "Épine", faction = "Horde", hostile = false }
+u:event("PLAYER_TARGET_CHANGED")
+check(U.Window.addTarget:IsEnabled(), "unflagged Horde target can be listed")
+U.Window.addTarget.scripts.OnClick()
+equal(U.Bounties:Own()[U:NameKey("Mørk Épine")], "Mørk Épine", "target button preserves every Unicode byte")
+check(not U.Window.addTarget:IsEnabled(), "listed target cannot be added twice")
+equal(U.Window.frame.height, 374, "quick-add does not expand the slim bounty window")
+u.units.mouseover = { first = "Кровь", surname = "Тьмы", faction = "Horde" }
+u.env.SlashCmdList.MYCRADAR("bounty mouseover")
+equal(U.Bounties:Own()[U:NameKey("Кровь Тьмы")], "Кровь Тьмы", "mouseover command preserves Cyrillic names")
+u.units.target = { first = "Đárk", surname = "Søul", faction = "Horde", dead = true }
+u.env.SlashCmdList.MYCRADAR("bounty target")
+equal(U.Bounties:Own()[U:NameKey("Đárk Søul")], "Đárk Søul", "target command also works on a corpse")
+local playerLink = "|cffc69b6d|Hplayer:Żółć-Nøcturne:123:WHISPER|h[Żółć]|h|r"
+U.Window.input:SetText(playerLink)
+check(U.Window.add:IsEnabled(), "pasted player link enables manual add")
+U.Window.add.scripts.OnClick()
+equal(U.Bounties:Own()[U:NameKey("Żółć Nøcturne")], "Żółć-Nøcturne", "player-link payload retains full surname despite short label")
+check(not U.Bounties:Add("Żółć Nøcturne"), "copied and linked names resolve to the same bounty")
+check(not U.Bounties:Add("|Hitem:123|h[Mørk Épine]|h"), "non-player links are rejected")
+check(not U.Bounties:Add("|Hplayer:Bad|h[Name]|h|Hspell:1|h[X]|h"), "extra hyperlink payload is rejected")
+check(not U.Bounties:Add(SECRET), "secret name inputs cannot be inspected")
+check(not U.Bounties:Add(string.rep("a", 513)), "oversized input rejected before parsing")
+local beforeUnits = #U.Bounties:List()
+for _, target in ipairs({
+    { first = SECRET, surname = "Hidden", faction = "Horde" },
+    { first = "Hidden", surname = "Faction", faction = SECRET },
+    { first = "Friendly", surname = "Player", faction = "Alliance" },
+    { first = "Enemy", surname = "Creature", faction = "Horde", player = false },
+}) do
+    u.units.target = target
+    check(not U.Bounties:AddUnit("target"), "hidden, friendly or NPC target cannot be auto-listed")
+end
+equal(#U.Bounties:List(), beforeUnits, "rejected targets do not alter listings")
+u:drain()
+for _, packet in ipairs(u.sent) do
+    check(#packet.message <= 255, "Unicode bounty packets obey byte limit")
+    v.R.Net:Receive(packet.message, packet.channel, "Numi-Tumi")
+end
+local shared = v.R:GuildDB().bounties["numi tumi"].targets
+equal(shared[v.R:NameKey("Mørk Épine")], "Mørk Épine", "accented target survives guild synchronization unchanged")
+equal(shared[v.R:NameKey("Кровь Тьмы")], "Кровь Тьмы", "Cyrillic target survives guild synchronization unchanged")
+equal(shared[v.R:NameKey("Żółć Nøcturne")], "Żółć-Nøcturne", "linked surname survives guild synchronization unchanged")
+v.units.target = { first = "Żółć", surname = "Nøcturne", faction = "Horde" }
+v:event("PLAYER_TARGET_CHANGED")
+check(v.R.Bounties.nearby[v.R:NameKey("Żółć Nøcturne")], "linked Unicode bounty matches the visible player")
+check(U.Bounties:Remove(playerLink), "player links also remove the author's listing")
+check(U.Bounties:Add("Fifth Enemy"))
+check(U.Bounties:Add("Sixth Enemy"))
+u.units.target = { first = "Séventh", surname = "Enemy", faction = "Horde" }
+u:event("PLAYER_TARGET_CHANGED")
+check(not U.Window.addTarget:IsEnabled(), "five-name cap disables quick-add")
+check(not U.Bounties:AddUnit("target"), "quick-add cannot bypass the five-name cap")
+U.Window:Show("pvp")
+check(not U.Window.addTarget:IsShown(), "quick-add stays confined to the bounty tab")
 print("PASS: " .. assertions .. " assertions")

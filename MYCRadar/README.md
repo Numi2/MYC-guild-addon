@@ -1,4 +1,4 @@
-# MYC Radar 2.2.0
+# MYC Radar 2.3.0
 
 The small in-game companion for **Murloch Yact Club**, built for **WoW: Forever**, interface **16001**.
 
@@ -14,13 +14,15 @@ Guildmates install the same version to share data. Updating from 1.0 keeps your 
 ## Four tabs
 
 - **PvP:** guild rankings by lifetime honorable kills, undead paladin kills recorded by MYC, and bounty points. Custom kills include confirmed personal kills with no honor. Click a guildmate to whisper. Lifetime totals come from WoW; the other counters start when MYC records them.
-- **Bounties:** any member can add up to five full Horde character names, including surnames. Members can remove their own listings. Duplicate sponsors share one target and never multiply the reward. Click a name to fill the edit box.
+- **Bounties:** select a Horde player and click **Add target** to copy their full name exactly, including accents and surname. You can also paste a player link or type a full name in the field below. Each member can add up to five names and remove their own listings. Duplicate sponsors share one target and never multiply the reward. Click a listed name to fill the edit box.
 - **Shared quests:** switch between **Shared quests** and **Legacy goals** within this tab. Quest matches show guildmates on the same unfinished quest in your zone. Legacy matches show guildmates who still need the same objective in a challenge you both track in WoW's Legacy window. Hover for both characters' progress; click to whisper.
 - **Crafters:** items guildmates know how to make. Open your own profession books once to share your recipes. Search by item name, ID or crafter, hover for the item tooltip, and click to whisper. Item tooltips also show recently heard guild crafters.
 
 The slim window shows six rows at a time, with search, paging and mouse-wheel navigation.
 It opens only when requested, remembers where you drag it, and closes with Escape.
 Long names and recipe lists expand on hover. The bounty tab shows when you have already claimed today's reward.
+
+**Quick bounty entry:** `/myc bounty target` copies your selected Horde player; `/myc bounty mouseover` copies the Horde player under your cursor. Both can be used in macros and work on unflagged players or corpses when WoW exposes the name. Hidden identities, Alliance players and NPCs cannot be copied. A pasted player hyperlink uses its full name, even when the chat label shows only a first name. Accents are preserved through saving and guild sharing.
 
 ## Nearby bounties
 
@@ -63,6 +65,8 @@ The board is a friendly guild competition: clients report their own totals over 
 | --- | --- |
 | /myc | Open or close the window |
 | /myc pvp, bounties, quests, crafters | Open a tab |
+| /myc bounty target | Add the selected Horde player's full name |
+| /myc bounty mouseover | Add the Horde player under your cursor |
 | /myc bounty add Full Name | Add your listing |
 | /myc bounty remove Full Name | Remove your listing |
 | /myc sync | Request guild refresh; at most once a minute |
@@ -82,4 +86,4 @@ Messages are at most 255 bytes, paced at one every 1.5 seconds, and queued outsi
 
 Automated tests simulate multiple guild clients, no-honor and pet kill credit, honor/kill event ordering, duplicate signals, observed resurrections, secret and stale IDs, daily bounty caps, name detection, guild switches, transport, crafting, Legacy objective matching, sighting expiry/replay and window controls. The source and ZIP are checked together.
 
-In-game smoke check: with two guild members on MYC 2.2, track the same unfinished Legacy challenge and open **Quests → Legacy goals**. Add a full bounty name; a member directly observing that player should produce a report on the other member's board, which expires after 90 seconds without a fresh observation. For kill credit, observe a living undead paladin, confirm a personal kill with no honor, then check the custom counter and **/myc status**. Repeat with honor and check that one death adds only one kill; killing a listed victim twice in a day must award only ten points. **/console scriptErrors 1** enables WoW's Lua error dialog.
+In-game smoke check: with two guild members on MYC 2.3, select a Horde player with accents in their name, open **Bounties** and click **Add target**. Confirm the full name and surname appear on both boards without retyping. Try the target/mouseover commands and a pasted player link; repeated entry must not create duplicates. A member directly observing that living hostile player should produce a report on the other member's board, which expires after 90 seconds without a fresh observation. Track the same unfinished Legacy challenge and check **Quests → Legacy goals**. For kill credit, observe a living undead paladin, confirm a personal kill with no honor, then check the custom counter and **/myc status**. Repeat with honor and check that one death adds only one kill; killing a listed victim twice in a day must award only ten points. **/console scriptErrors 1** enables WoW's Lua error dialog.

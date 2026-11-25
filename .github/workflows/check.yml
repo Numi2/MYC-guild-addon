@@ -21,3 +21,7 @@ jobs:
           lua5.4 tests/run.lua
       - name: Verify installable ZIP
         run: python3 scripts/package.py --check
+      - name: Verify release metadata and tooling
+        run: |
+          python3 scripts/release.py --check
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
