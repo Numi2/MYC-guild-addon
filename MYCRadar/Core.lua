@@ -1,6 +1,6 @@
 local addonName, R = ...
 R.name = addonName
-R.version = "2.2.0"
+R.version = "2.3.0"
 R.prefix = "MYCRadar2"
 R.peers = {}
 R.roster = {}

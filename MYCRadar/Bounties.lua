@@ -3,6 +3,38 @@ R.Bounties = { units = {}, nearby = {}, sightings = {}, reported = {}, lastBroad
 local B = R.Bounties
 local MAX_OWN = 5
 
+local function plainTrue(value)
+    return not R:IsSecret(value) and value == true
+end
+
+function B:InputName(input)
+    if R:IsSecret(input) or type(input) ~= "string" or #input > 512 then return nil end
+    input = input:match("^%s*(.-)%s*$")
+    -- Use the full name in the player-link payload, never the shortened label.
+    local link = input:gsub("^|c" .. string.rep("%x", 8), ""):gsub("|r$", "")
+    local name = link:match("^|Hplayer:([^:|]+)[^|]*|h%[[^|]*%]|h$")
+    return R:ValidName(name or input)
+end
+
+function B:UnitNameForBounty(unit)
+    if unit ~= "target" and unit ~= "mouseover" then return nil, "Use target or mouseover." end
+    if not plainTrue(R:Read(UnitExists, unit)) or not plainTrue(R:Read(UnitIsPlayer, unit)) then
+        return nil, "Select a Horde player first."
+    end
+    local faction = R:Read(UnitFactionGroup, unit)
+    if R:IsSecret(faction) then return nil, "That player's identity is hidden by WoW right now." end
+    if faction ~= "Horde" then return nil, "Select a Horde player, not an Alliance player or NPC." end
+    local name = R:UnitName(unit)
+    if not name then return nil, "That player's full name is unavailable right now." end
+    return name
+end
+
+function B:AddUnit(unit)
+    local name, message = self:UnitNameForBounty(unit)
+    if not name then return false, message end
+    return self:Add(name)
+end
+
 function B:ClearNearby()
     self.nearby = {}
     self.sightings, self.reported = {}, {}
@@ -18,7 +50,7 @@ function B:Own()
 end
 
 function B:Add(name)
-    name = R:ValidName(name)
+    name = self:InputName(name)
     if not name then return false, "Enter a full Horde character name, including surname." end
     local db = self:Own()
     if not db then return false, "Join your guild first." end
@@ -32,6 +64,7 @@ function B:Add(name)
 end
 
 function B:Remove(name)
+    name = self:InputName(name)
     local db, key = self:Own(), R:NameKey(name)
     if not db or not key or not db[key] then return false, "You can remove names you added." end
     db[key] = nil
@@ -179,10 +212,6 @@ function B:IsListed(key)
         if R:IsMember(author) and row.targets and row.targets[key] then return true end
     end
     return false
-end
-
-local function plainTrue(value)
-    return not R:IsSecret(value) and value == true
 end
 
 function B:Inspect(unit, nearby)

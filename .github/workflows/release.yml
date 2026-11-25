@@ -1,0 +1,51 @@
+name: Release addon
+on:
+  push:
+    tags: ['v[0-9]*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate tag and merged source
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          python3 scripts/release.py --check --tag "$RELEASE_TAG"
+      - name: Install Lua
+        run: sudo apt-get update && sudo apt-get install -y lua5.1 lua5.4
+      - name: Validate Lua syntax
+        run: |
+          for source in MYCRadar/*.lua tests/*.lua; do
+            luac5.1 -p "$source"
+            luac5.4 -p "$source"
+          done
+      - name: Test addon and release tooling
+        run: |
+          lua5.1 tests/run.lua
+          lua5.4 tests/run.lua
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
+          python3 scripts/package.py --check
+      - name: Build versioned assets
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 scripts/release.py --tag "$RELEASE_TAG"
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/MYCRadar-*.zip dist/SHA256SUMS.txt \
+            --verify-tag --title "MYC Radar $RELEASE_TAG" \
+            --notes-file dist/RELEASE_NOTES.md --latest

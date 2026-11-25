@@ -109,6 +109,7 @@ f:SetScript("OnEvent", function(_, event, ...)
         R.Bounties:Scan()
     elseif event == "PLAYER_TARGET_CHANGED" or event == "UPDATE_MOUSEOVER_UNIT" or event == "PLAYER_REGEN_ENABLED" then
         R.Bounties:Scan()
+        if event == "PLAYER_TARGET_CHANGED" then R.Window:Refresh() end
     elseif event == "CHAT_MSG_COMBAT_HONOR_GAIN" then
         local message = ...
         local lineID = select(11, ...)
@@ -161,14 +162,16 @@ SlashCmdList.MYCRADAR = function(input)
     elseif command == "pvp" or command == "bounties" or command == "quests" or command == "crafters" then
         R.Window:Show(command)
     elseif command == "bounty" then
-        local action, name = argument:match("^(%S+)%s+(.+)$")
+        local action, name = argument:match("^(%S+)%s*(.-)$")
         local _, message
         if action == "add" then
             _, message = R.Bounties:Add(name)
         elseif action == "remove" then
             _, message = R.Bounties:Remove(name)
+        elseif action == "target" or action == "mouseover" then
+            _, message = R.Bounties:AddUnit(action)
         else
-            message = "Use /myc bounty add Full Name or /myc bounty remove Full Name."
+            message = "Use /myc bounty target | mouseover | add Full Name | remove Full Name."
         end
         R:Chat(message)
         R.Window:Refresh()
@@ -196,6 +199,6 @@ SlashCmdList.MYCRADAR = function(input)
         status()
     else
         R:Chat("/myc opens the window. Tabs: pvp, bounties, quests, crafters.")
-        R:Chat("/myc bounty add Full Name | bounty remove Full Name | quiet | off | on | sync | status")
+        R:Chat("/myc bounty target | bounty mouseover | bounty add Full Name | bounty remove Full Name | quiet | off | on | sync | status")
     end
 end

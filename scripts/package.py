@@ -6,17 +6,17 @@ from pathlib import Path
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-ADDON = ROOT / "MYCRadar"
 
 
-def build():
-    toc = ADDON / "MYCRadar.toc"
+def build(root=ROOT):
+    addon = root / "MYCRadar"
+    toc = addon / "MYCRadar.toc"
     entries = [line.strip() for line in toc.read_text().splitlines()
                if line.strip() and not line.startswith("#")]
-    paths = [toc, *(ADDON / name for name in entries), ADDON / "README.md"]
+    paths = [toc, *(addon / name for name in entries), addon / "README.md"]
     assert len(paths) == len(set(paths)), "Duplicate file in TOC"
-    assert all(path.is_file() and path.parent == ADDON for path in paths), "Missing/invalid source file"
-    assert set(ADDON.glob("*.lua")) == {ADDON / name for name in entries}, "Unlisted Lua source"
+    assert all(path.is_file() and path.parent == addon for path in paths), "Missing/invalid source file"
+    assert set(addon.glob("*.lua")) == {addon / name for name in entries}, "Unlisted Lua source"
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in paths:
