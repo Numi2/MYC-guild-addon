@@ -1,4 +1,4 @@
-# MYC Radar 2.3.0
+# MYC Radar 2.4.0
 
 The small in-game companion for **Murloch Yact Club**, built for **WoW: Forever**, interface **16001**.
 
@@ -15,7 +15,7 @@ Guildmates install the same version to share data. Updating from 1.0 keeps your 
 
 - **PvP:** guild rankings by lifetime honorable kills, undead paladin kills recorded by MYC, and bounty points. Custom kills include confirmed personal kills with no honor. Click a guildmate to whisper. Lifetime totals come from WoW; the other counters start when MYC records them.
 - **Bounties:** select a Horde player and click **Add target** to copy their full name exactly, including accents and surname. You can also paste a player link or type a full name in the field below. Each member can add up to five names and remove their own listings. Duplicate sponsors share one target and never multiply the reward. Click a listed name to fill the edit box.
-- **Shared quests:** switch between **Shared quests** and **Legacy goals** within this tab. Quest matches show guildmates on the same unfinished quest in your zone. Legacy matches show guildmates who still need the same objective in a challenge you both track in WoW's Legacy window. Hover for both characters' progress; click to whisper.
+- **Shared quests:** see guildmates with the same unfinished quest in your zone. When one dungeon can advance different goals for you and a guildmate, the first row names the dungeon and how many guildmates benefit. Hover to see everyone's quests and Legacy objectives. The separate **Legacy goals** view shows guildmates who track the same unfinished challenge objective.
 - **Crafters:** items guildmates know how to make. Open your own profession books once to share your recipes. Search by item name, ID or crafter, hover for the item tooltip, and click to whisper. Item tooltips also show recently heard guild crafters.
 
 The slim window shows six rows at a time, with search, paging and mouse-wheel navigation.
@@ -41,6 +41,8 @@ Open WoW's Legacy challenges, expand a challenge you want to work on and enable 
 Only tracked challenges are shared: at most ten challenges and 128 unfinished objectives. Completing an objective or untracking a challenge removes it from your next snapshot. Matches expire after seven minutes without an update. The counter shows tracked Legacy challenges; the list shows actual companions, and search includes challenge and objective names.
 
 Legacy points are account-wide. A character can still have an unfinished objective after the account earned its reward; MYC compares character progress and does not promise additional Legacy points.
+
+The dungeon suggestion combines current quest logs and tracked Legacy goals across zones. It covers **The Deadmines**, **City of Dalaran**, and **The Drowned City**, and prefers the dungeon that helps the most people. Players need a recent guild update to appear.
 
 ## Points and kill credit
 
@@ -79,6 +81,8 @@ The board is a friendly guild competition: clients report their own totals over 
 MYC shares only over Blizzard's **GUILD addon-message channel**: unfinished quest IDs, coarse 10×10 observer map tiles, craftable item/recipe IDs, your own bounty names, your own PvP totals, tracked Legacy objective IDs/progress, and short-lived witnessed bounty reports. Guild data is separated by guild. Members need MYC 2.2 to collect personal no-honor kills, and 2.1 or later for Legacy companions and fresh guild sightings. Older 2.x clients display the totals but collect only the signals their own version supports; 1.x uses a different protocol. Victim GUIDs stay in local session memory and are never transmitted.
 
 Quest matches and crafter availability expire from memory. Bounties and last-shared rankings persist locally; an author's next complete snapshot removes their deleted listings. Updates are authored by the member whose data changes, so a newly installed client learns an offline member's listings/totals when that member next shares. Current guild roster data filters departed members.
+
+If Forever leaves the realm name blank, MYC reopens the character's prior guild save when there is one clear match. It combines activity from before and after the realm change where the timestamps show distinct periods. If several previous realms fit the same guild name, their records stay separate.
 
 Messages are at most 255 bytes, paced at one every 1.5 seconds, and queued outside combat/instances. Large profession books take time to arrive. Bounty reports share the listed name and witness's approximate area; exact enemy coordinates and race/class observations are never transmitted. There are no external services or dependencies.
 

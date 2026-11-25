@@ -295,12 +295,16 @@ function W:Data()
             return a.left < b.left
         end)
     end
+    if self.tab == "quests" and self.questView == "quests" then
+        local dungeon = R.Dungeons:Best()
+        if dungeon then table.insert(rows, 1, dungeon) end
+    end
     local search = (self.search:GetText() or ""):lower():match("^%s*(.-)%s*$")
     if search ~= "" then
         local filtered = {}
         for _, row in ipairs(rows) do
             if (row.left .. " " .. row.right .. " " .. (row.tooltipTitle or "") .. " " ..
-                (row.itemID or "")):lower():find(search, 1, true) then
+                (row.itemID or "") .. " " .. (row.dungeon and row.detail or "")):lower():find(search, 1, true) then
                 filtered[#filtered + 1] = row
             end
         end
@@ -403,7 +407,10 @@ function W:Show(tab)
     end
     self.frame:Show()
     R.PvP:Broadcast(false)
-    if self.tab == "quests" then R.Legacy:Broadcast(false) end
+    if self.tab == "quests" then
+        R.Quests:Broadcast(false)
+        R.Legacy:Broadcast(false)
+    end
     self:Refresh()
 end
 

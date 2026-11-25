@@ -6,7 +6,7 @@ A minimal guild addon for **WoW: Forever**, interface **16001**. Type **/myc** f
 
 - **PvP rankings:** lifetime honorable kills, undead paladin kills recorded by MYC (including confirmed personal kills with no honor), and bounty points.
 - **Guild bounty board:** click **Add target** to copy a Horde player's full name, including accents, or paste a player link. See local minimap sightings and fresh guild reports that expire after 90 seconds. Hover for the witness and approximate observer area. Honor credit or a confirmed personal kill awards **10 points per victim per UTC day**, even without honor.
-- **Shared quests and Legacy companions:** find guildmates on the same unfinished quest in your zone, or the same unfinished objective in a tracked Legacy challenge; click to whisper.
+- **Shared quests and Legacy companions:** find guildmates on the same quest or tracked Legacy objective. One compact suggestion shows when a dungeon can advance different goals for you and guildmates.
 - **Guild crafters:** searchable learned recipes, item tooltips and click-to-whisper.
 
 Guild-only synchronization. No dependencies, web services, scheduling, signup management or auction-price functionality.

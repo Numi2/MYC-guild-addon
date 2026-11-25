@@ -41,7 +41,7 @@ function Q:Snapshot()
                     local completed = false
                     if C_QuestLog.IsComplete then
                         local good, result = pcall(C_QuestLog.IsComplete, info.questID)
-                        completed = good and result == true
+                        completed = not good or R:IsSecret(result) or result == true
                     end
                     if not completed and not own[info.questID] then
                         own[info.questID] = true

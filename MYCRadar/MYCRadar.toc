@@ -2,7 +2,7 @@
 ## Title: |cff37d6c0MYC Radar|r
 ## Notes: Shared quests, guild crafters, PvP rankings and a guild bounty board.
 ## Author: Murloch Yact Club
-## Version: 2.3.0
+## Version: 2.4.0
 ## SavedVariables: MYCRadarDB
 ## SavedVariablesPerCharacter: MYCRadarCharDB
 
@@ -10,6 +10,7 @@ Core.lua
 Network.lua
 Quests.lua
 Legacy.lua
+Dungeons.lua
 Professions.lua
 Tooltip.lua
 PvP.lua

@@ -1,6 +1,6 @@
 local addonName, R = ...
 R.name = addonName
-R.version = "2.3.0"
+R.version = "2.4.0"
 R.prefix = "MYCRadar2"
 R.peers = {}
 R.roster = {}
@@ -99,6 +99,98 @@ function R:InGuild()
     return self:UpdateGuild() ~= nil
 end
 
+local function mergeLatest(destination, source, field)
+    for key, row in pairs(type(source) == "table" and source or {}) do
+        local previous = destination[key]
+        if type(row) == "table" and (type(previous) ~= "table" or
+            (tonumber(row[field]) or 0) > (tonumber(previous[field]) or 0)) then
+            destination[key] = row
+        end
+    end
+end
+
+local function mergePvP(old, recent, lastOldScore)
+    if type(recent) ~= "table" then return old end
+    old = type(old) == "table" and old or {}
+    local oldSince, recentSince = tonumber(old.since), tonumber(recent.since)
+    local separate = oldSince and recentSince and lastOldScore and
+        oldSince < recentSince and lastOldScore < recentSince
+    local claims, duplicates = {}, 0
+    for victim, day in pairs(old.claimed or {}) do claims[victim] = day end
+    for victim, day in pairs(recent.claimed or {}) do
+        if claims[victim] == day then duplicates = duplicates + 1 end
+        if not claims[victim] or claims[victim] < day then claims[victim] = day end
+    end
+    local function total(field, overlap)
+        local before, after = tonumber(old[field]) or 0, tonumber(recent[field]) or 0
+        if separate then return math.max(before, after, before + after - overlap) end
+        return math.max(before, after)
+    end
+    return {
+        since = oldSince and recentSince and math.min(oldSince, recentSince) or oldSince or recentSince,
+        lifetime = recent.lifetime or old.lifetime,
+        undeadPaladins = total("undeadPaladins", 0),
+        bountyKills = total("bountyKills", duplicates),
+        claimed = claims,
+    }
+end
+
+function R:RecoverGuildKey(blank)
+    local aliases = self.charDB.realmGuildKeys
+    if aliases[blank] then return aliases[blank] end
+    local guilds, characterGuilds = self.db.guilds, self.charDB.guilds
+    local oldKey
+    for key, entry in pairs(characterGuilds) do
+        if type(key) == "string" and type(entry) == "table" and key ~= blank and
+            key:sub(1, #blank) == blank then
+            -- The character's own save must identify exactly one historical realm.
+            if oldKey then return blank end
+            oldKey = key
+        end
+    end
+    if not oldKey then return blank end
+
+    local oldGuild = type(guilds[oldKey]) == "table" and guilds[oldKey] or {}
+    guilds[oldKey] = oldGuild
+    oldGuild.pvp = type(oldGuild.pvp) == "table" and oldGuild.pvp or {}
+    oldGuild.bounties = type(oldGuild.bounties) == "table" and oldGuild.bounties or {}
+    local own = self:NameKey(self:UnitName("player"))
+    local oldScore = own and oldGuild.pvp[own]
+    local old, recent = characterGuilds[oldKey], characterGuilds[blank]
+    if type(recent) == "table" then
+        old.pvp = mergePvP(old.pvp, recent.pvp, oldScore and tonumber(oldScore.updated))
+        old.professions = type(old.professions) == "table" and old.professions or {}
+        mergeLatest(old.professions, recent.professions, "updated")
+
+        -- Prefer current listings when the two buckets together exceed the board limit.
+        local names, count, older = {}, 0, {}
+        for key, name in pairs(recent.bounties or {}) do
+            names[key], count = name, count + 1
+        end
+        for key in pairs(old.bounties or {}) do older[#older + 1] = key end
+        table.sort(older)
+        for _, key in ipairs(older) do
+            if not names[key] then
+                if count < 5 then
+                    names[key], count = old.bounties[key], count + 1
+                else
+                    old.realmBountyOverflow = old.realmBountyOverflow or {}
+                    old.realmBountyOverflow[key] = old.bounties[key]
+                end
+            end
+        end
+        old.bounties = names
+    end
+    local recentGuild = guilds[blank]
+    if type(recentGuild) == "table" and not self.db.realmGuildKeys[blank] then
+        mergeLatest(oldGuild.pvp, recentGuild.pvp, "revision")
+        mergeLatest(oldGuild.bounties, recentGuild.bounties, "revision")
+        self.db.realmGuildKeys[blank] = oldKey
+    end
+    aliases[blank] = oldKey
+    return oldKey
+end
+
 function R:UpdateGuild()
     if not self.db or not self.charDB then return nil end
     local name = self:Read(GetGuildInfo, "player")
@@ -106,7 +198,11 @@ function R:UpdateGuild()
         self:Read(IsInGuild) ~= true then name = nil end
     local realm = self:Read(GetRealmName)
     if self:IsSecret(realm) or type(realm) ~= "string" then realm = "" end
-    local key = name and (name .. "@" .. realm) or nil
+    local key
+    if name then
+        local blank = name .. "@"
+        key = realm ~= "" and (blank .. realm) or self:RecoverGuildKey(blank)
+    end
     if key ~= self.guildKey then
         self.guildKey = key
         self.peers = {}
@@ -147,10 +243,12 @@ function R:InitializeDB()
     local db, charDB = MYCRadarDB, MYCRadarCharDB
     db.version = 2
     db.guilds = type(db.guilds) == "table" and db.guilds or {}
+    db.realmGuildKeys = type(db.realmGuildKeys) == "table" and db.realmGuildKeys or {}
     db.settings = type(db.settings) == "table" and db.settings or {}
     if db.settings.enabled == nil then db.settings.enabled = true end
     if db.settings.alerts == nil then db.settings.alerts = true end
     charDB.guilds = type(charDB.guilds) == "table" and charDB.guilds or {}
+    charDB.realmGuildKeys = type(charDB.realmGuildKeys) == "table" and charDB.realmGuildKeys or {}
     self.db = db
     self.charDB = charDB
     for _, guild in pairs(db.guilds) do

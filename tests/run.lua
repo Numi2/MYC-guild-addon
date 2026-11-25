@@ -167,7 +167,7 @@ local function client(first, surname)
     env.GetAchievementNumCriteria = function(id) return #(c.legacy[id] and c.legacy[id].criteria or {}) end
     env.GetAchievementCriteriaInfo = function(id, i)
         local row = c.legacy[id].criteria[i]
-        return row.name, 0, row.done, row.quantity, row.required
+        return row.name, 0, row.done, row.quantity, row.required, nil, nil, row.asset
     end
     local R = {}
     for line in io.lines(root .. "/MYCRadar/MYCRadar.toc") do
@@ -215,7 +215,7 @@ end
 
 local a, b = client("Numi", "Tumi"), client("Rhea", "Tide")
 local R = a.R
-equal(R.version, "2.3.0")
+equal(R.version, "2.4.0")
 equal(a.prefix, "MYCRadar2")
 check(R.commReady, "prefix registration")
 check(R.rosterReady, "guild roster loaded")
@@ -489,6 +489,50 @@ check(c.R.Window.footer:GetText():find("unavailable", 1, true), "unavailable cre
 c.hk = SECRET
 c.R.PvP:Broadcast(true)
 equal(c.R.PvP:Local().lifetime, 123, "secret lifetime stats cannot replace last readable value")
+
+-- Forever's realm hotfix can leave both the original and a new blank-key bucket.
+local migration = client("Numi", "Tumi")
+local M = migration.R
+local previous, blank = M.guildKey, migration.guild .. "@"
+local old = M:CharGuildDB()
+local today = os.date("!%Y-%m-%d", migration.epoch)
+old.pvp = { since = migration.epoch - 100, undeadPaladins = 4, bountyKills = 2,
+    lifetime = 100, claimed = { ["old target"] = today } }
+old.bounties = { ["old target"] = "Old Target" }
+old.professions[164] = { updated = 10, crafts = { [2000] = 1000 } }
+M:GuildDB().pvp["numi tumi"] = { revision = 10, updated = migration.epoch - 50 }
+M:GuildDB().bounties["rhea tide"] = { revision = 10, targets = { ["old target"] = "Old Target" } }
+M.charDB.guilds[blank] = {
+    pvp = { since = migration.epoch - 40, undeadPaladins = 12, bountyKills = 2,
+        lifetime = 120, claimed = { ["old target"] = today, ["new target"] = today } },
+    bounties = { ["new target"] = "New Target" },
+    professions = { [164] = { updated = 20, crafts = { [2001] = 1001 } } },
+}
+M.db.guilds[blank] = {
+    pvp = { ["rhea tide"] = { revision = 20, undeadPaladins = 5 } },
+    bounties = { ["rhea tide"] = { revision = 20, targets = {} } },
+}
+migration.env.GetRealmName = function() return "" end
+M:InitializeDB()
+equal(M.guildKey, previous, "blank realm reopens this character's established guild")
+equal(M.PvP:Local().undeadPaladins, 16, "recover both nonoverlapping kill totals")
+equal(M.PvP:Local().bountyKills, 3, "do not double-count a known same-day claim")
+equal(M.PvP:Local().claimed["new target"], today, "today's claims remain in force")
+equal(M.Bounties:Own()["old target"], "Old Target")
+equal(M.Bounties:Own()["new target"], "New Target")
+equal(M.Professions:AllCrafts()[2001], 1001, "keep most recent profession scan")
+equal(M:GuildDB().pvp["rhea tide"].undeadPaladins, 5, "carry forward newer guild scores")
+check(not next(M:GuildDB().bounties["rhea tide"].targets), "latest guild snapshot preserves a deletion")
+check(M.Bounties:Remove("Old Target"))
+M:InitializeDB()
+equal(M.PvP:Local().undeadPaladins, 16, "repeated reload cannot count the split totals again")
+check(not M.Bounties:Own()["old target"], "repeated reload cannot revive a removed bounty")
+equal(M.charDB.guilds[blank].pvp.undeadPaladins, 12, "original blank bucket remains available")
+migration.guild = "Different Guild"
+M.charDB.guilds[migration.guild .. "@One"] = { pvp = { undeadPaladins = 1 } }
+M.charDB.guilds[migration.guild .. "@Two"] = { pvp = { undeadPaladins = 2 } }
+equal(M:UpdateGuild(), migration.guild .. "@", "ambiguous historical realms stay separate")
+equal(M.PvP:Local().undeadPaladins, 0, "ambiguous realm does not import other guild data")
 
 -- Selected Legacy goals match the same unfinished objective, not merely a challenge.
 local d, e = client("Numi", "Tumi"), client("Rhea", "Tide")
@@ -859,4 +903,59 @@ check(not U.Window.addTarget:IsEnabled(), "five-name cap disables quick-add")
 check(not U.Bounties:AddUnit("target"), "quick-add cannot bypass the five-name cap")
 U.Window:Show("pvp")
 check(not U.Window.addTarget:IsShown(), "quick-add stays confined to the bounty tab")
+
+-- Different quest and Legacy goals turn into one run across zones and clients.
+local planner, quester, spelunker = client("Numi", "Tumi"), client("Rhea", "Tide"), client("Other", "Sailor")
+local Plan = planner.R
+quester.timers, spelunker.timers = {}, {}
+planner.quests = { { questID = 95787, title = "Take Two With Water" } }
+quester.quests = { { questID = 95788, title = "Magics of the Drowned City" } }
+for _, player in ipairs({ planner, spelunker }) do
+    player.legacy[62032] = { name = "Experienced Spelunker", points = 1, criteria = {
+        { name = "Gnomeregan", quantity = 0, required = 1, done = false, asset = 7800 },
+        { name = "Ciudad sumergida", quantity = 0, required = 1, done = false, asset = 260243 },
+    } }
+end
+spelunker.tracked = { 62032 }
+quester.env.C_Map.GetBestMapForUnit = function() return 42 end
+local function sharePlan(source)
+    source.sent = {}
+    source.R.Net:Clear()
+    source.R.Quests:Broadcast(true)
+    source.R.Legacy:Broadcast(true)
+    source:drain()
+    for _, packet in ipairs(source.sent) do
+        Plan.Net:Receive(packet.message, packet.channel, source.first .. "-" .. source.surname)
+    end
+end
+sharePlan(quester)
+sharePlan(spelunker)
+Plan.Window:Show("quests")
+equal(#Plan.Window:Data(), 1, "one row combines all the dungeon goals")
+local first = Plan.Window.rows[1]
+equal(first.left:GetText(), "The Drowned City")
+equal(first.right:GetText(), "You + 2 guildmates")
+equal(Plan.Window.frame.height, 340, "dungeon row uses existing list space")
+first.scripts.OnEnter()
+local tooltip = table.concat(planner.env.GameTooltip.lines, "\n")
+check(tooltip:find("You — Take Two With Water", 1, true), "hover lists your own reason")
+check(tooltip:find("Rhea-Tide — Magics of the Drowned City", 1, true), "hover shows a different quest in another zone")
+check(tooltip:find("Other-Sailor — Legacy · Defeat Min'loth the Serpent", 1, true),
+    "hover identifies the Legacy boss using its asset even in a different locale")
+Plan.Window.questViews.legacy.scripts.OnClick()
+check(not first.data or not first.data.dungeon, "one-run row belongs to Shared Quests only")
+Plan.Window.questViews.quests.scripts.OnClick()
+quester:advance(21)
+quester.quests = { { questID = 95787, title = "Take Two With Water" } }
+sharePlan(quester)
+Plan.peers["other sailor"].legacySeen = Plan:Clock() - 420
+Plan.Window:Refresh()
+check(not first:IsShown(), "same quest alone or expired Legacy do not qualify")
+spelunker:advance(21)
+spelunker.legacy[62032].criteria[2].done = true
+sharePlan(spelunker)
+check(not Plan.Dungeons:Best(), "completed peer goal expires on its next snapshot")
+planner.env.C_QuestLog.IsComplete = function() return SECRET end
+Plan.Quests:Broadcast(false)
+check(not Plan.Quests.own[95787], "unreadable quest completion cannot suggest a run")
 print("PASS: " .. assertions .. " assertions")

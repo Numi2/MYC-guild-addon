@@ -2,6 +2,12 @@
 
 Versions use MAJOR.MINOR.PATCH. From 2.3.0 onward, each published version has a Git tag and a GitHub release with an installable ZIP and SHA-256 checksum.
 
+## [2.4.0] - 2026-11-25
+
+- Recover saved guild history after Forever began returning a blank realm name. Bring together bounty listings, PvP history, and profession scans when the character's old guild is identifiable.
+- Add one dungeon recommendation row to Shared Quests. It combines different unfinished quests and tracked Legacy objectives that can progress in the same run. Hover to see each player's reasons.
+- Initial dungeon coverage includes The Deadmines, City of Dalaran, and The Drowned City. The row uses the existing quest and Legacy messages.
+
 ## [2.3.0] - 2026-11-25
 
 - **Add target:** copy a selected Horde player's full name into your bounty list with one click. Accents and other non-ASCII characters are preserved, including surnames. Works on unflagged players and corpses when WoW exposes their identity.
